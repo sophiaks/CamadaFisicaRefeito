@@ -74,6 +74,11 @@ class Client():
         confirmation = self.com.getData(14)
         if confirmation[0] == 4:
             print("Pacote enviado e recebido com sucesso")
+        elif confirmation[0] == 6:
+            print("Erro no pacote {0}".format(confirmation[6]))
+            head = self.create_head(b'\x03', confirmation[6], self.n_error, self.last_package_ok)
+            package = self.create_package(head, confirmation[6])
+            self.send_package(package)
 
     def run_client(self):
         while not self.ready:
@@ -91,11 +96,15 @@ class Client():
                 resposta = True
                 if timeElapsed > 5:
                     resposta = False
-                    print("Timeout. Encerrando comunicacao")
+                    print("Timeout. Tentando novamente.")
                     break
             if resposta:
                 self.get_package_confirmation()
-            self.this_package += 1
+                self.this_package += 1
+            else:
+                if self.this_package <= self.n_packages:
+                    self.send_package(package)
+                    t1 = time.time()
 
 client = Client('oiakon.png')
 client.run_client()
