@@ -5,12 +5,12 @@ import math
 import time
 import logging
 from crccheck.crc import Crc16
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
+logging.basicConfig(filename='client.log', filemode='a', format='CLIENT - %(asctime)s - %(message)s', level=logging.INFO)
 
 
 class Client():
     def __init__(self, filename):
-        logging.info("Comecando Transmissao")
+        logging.info("VAMOS COMECAR UHUL")
         serial_name = "COM4" 
         self.com = enlace(serial_name)
         self.com.enable()
@@ -28,10 +28,16 @@ class Client():
         self.last_package_ok = b'\x00'
         self.n_error = b'\x00'
 
+    def divide_chunks(self, l, n):
+        for i in range(0, len(l), n):
+            yield l[i:i + n]
+
     def create_payloads(self, filename):
         with open(filename, 'rb') as f:
             data = f.read()
-        return wrap(data, payloadSize)
+        self.size_total = len(data)
+        payloads = list(self.divide_chunks(data, payloadSize))
+        return payloads
 
     def create_crc(self, payload):
         crc = Crc16.calc(payload)
@@ -40,12 +46,13 @@ class Client():
 
     def create_handshake(self, file_id):
         msg_type = b'\x01'
-        n_packages = self.n_packages
+        n_packages =  bytes([self.n_packages])
         handshake = msg_type + self.id_client + self.id_server + n_packages + b'\x00' + b'\x00' + b'\x00' + crc 
         handshake = handshake + eop
         return handshake
 
     def get_handshake_conf(self):
+        logging.info("RECEBIMENTO | TIPO: T2 | TAMANHO TOTAL: {0} | TOTAL DE PACOTES: {1}".format(self.size_total, self.n_packages))
         handshakeConf = self.com.getData(14)
         if handshakeConf[0] == 2:
             self.ready = True
@@ -53,7 +60,7 @@ class Client():
             self.counter_timer += 1
 
     def send_handshake(self):
-        logging.info("ENVIO HANDSHAKE")
+        logging.info("ENVIO | TIPO: T1 | TAMANHO TOTAL: {0} | TOTAL DE PACOTES: {1}".format(self.size_total, self.n_packages))
         handshake = self.create_handshake(file_id)
         self.com.sendData(handshake)
         self.get_handshake_conf()
