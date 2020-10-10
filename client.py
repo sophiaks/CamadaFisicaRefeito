@@ -6,7 +6,7 @@ import time
 import logging
 from crccheck.crc import Crc16
 import sys
-logging.basicConfig(filename='client.log', filemode='a', format='CLIENT - %(asctime)s - %(message)s', level=logging.INFO)
+logging.basicConfig(filename='client.log', filemode='w', format='CLIENT - %(asctime)s - %(message)s', level=logging.INFO)
 
 
 class Client():
@@ -30,6 +30,8 @@ class Client():
         self.last_package_ok = b'\x00'
         self.n_error = b'\x00'
 
+        self.crc = crc
+
     def divide_chunks(self, l, n):
         '''
         Divide a imagem em pedaços
@@ -47,12 +49,13 @@ class Client():
         payloads = list(self.divide_chunks(data, payloadSize))
         return payloads
 
-    def create_crc(self, payload):
+    def create_crc(self, n):
         '''
         Cria o crc
         '''
-        crc = Crc16.calc(payload)
+        crc = Crc16.calc(self.payloads[n-1])
         crc = crc.to_bytes(2, byteorder="big")
+        print(crc)
         return crc
 
     def create_handshake(self, file_id):
@@ -69,7 +72,7 @@ class Client():
         '''
         Recebe a confirmação do handshake
         '''
-        logging.info("RECEBIMENTO | TIPO: T2 | TAMANHO TOTAL: {0} | TOTAL DE PACOTES: {1}".format(self.size_total, self.n_packages))
+        logging.info(f"RECEBIMENTO | TIPO: T2 | TAMANHO: 14")
         handshakeConf = self.com.getData(14)
         print("Peguei os bytes da conf")
         if handshakeConf[0] == 2:
@@ -83,7 +86,7 @@ class Client():
         '''
         handshake = self.create_handshake(file_id)
         self.com.sendData(handshake)
-        logging.info("ENVIO | TIPO: T1 | TAMANHO TOTAL: {0} | TOTAL DE PACOTES: {1}".format(self.size_total, self.n_packages))
+        logging.info("ENVIO | TIPO: T1 | TAMANHO: 14")
         print("Handshake enviado")
         self.get_handshake_conf()
         print("Confirmacao do handshake recebida")
@@ -92,7 +95,14 @@ class Client():
         '''
         Cria o head do pacote
         '''
-        head = msg_type + self.id_client + self.id_server + bytes([self.n_packages]) + bytes([n]) + bytes([len(self.payloads[n-1])]) + b'x00' + self.last_package_ok
+        head = msg_type + self.id_client + self.id_server + bytes([self.n_packages]) + n.to_bytes(1, byteorder='big') + len(self.payloads[n-1]).to_bytes(1, byteorder='big') + b'\x00' + self.last_package_ok + crc
+        print(len(head))
+        print(n.to_bytes(1, byteorder='big'))
+        print(len(self.payloads[n-1]).to_bytes(1, byteorder='big'))
+        print(len(self.payloads[n-1]))
+        print(bytes([self.n_packages]))
+
+        print(head)
         return head
 
     def create_package(self, head, this_package):
@@ -106,6 +116,7 @@ class Client():
         '''
         Envia o pacote
         '''
+        logging.info(f"ENVIO | T3 (DADOS) | TAMANHO: {package[5]} | PACOTE: {self.this_package} | TOTAL PACOTES: {len(self.payloads)} | CRC: {self.crc}")
         self.com.sendData(package)
 
     def get_package_confirmation(self):
@@ -113,7 +124,7 @@ class Client():
         Pega a confirmação do pacote
         '''
         confirmation, _nConf = self.com.getData(14)
-        logging.info(f"ENVIO PACOTE | TAMANHO: {len(self.payloads[self.this_package- 1])} | PACOTE: {self.this_package} | TOTAL PACOTES: {len(self.payloads)} | CRC: 0")
+        logging.info(f"RECEBIMENTO | T4 (CONF) | TAMANHO: {len(self.payloads[self.this_package- 1])} | PACOTE: {self.this_package} | TOTAL PACOTES: {len(self.payloads)} | CRC: {self.crc}")
         if confirmation[0] == 4:
             print(f"MENSAGEM T4 RECEBIDA - PACOTE {confirmation[7]}")
         elif confirmation[0] == 6:
@@ -134,6 +145,7 @@ class Client():
 
         while self.this_package <= self.n_packages:
             head = self.create_head(b'\x03', self.this_package)
+            print(len(head))
             package = self.create_package(head, self.this_package)
 
             print(f"____Pacote {self.this_package}____")
@@ -155,10 +167,12 @@ class Client():
 
             else:
                 print(f"Nenhuma resposta recebida do pacote {self.this_package}")
-                while self.this_package <= self.n_packages:
-                    self.send_package(package)
-                    t1 = time.time()
+                print(f"Enviando pacote {self.this_package} novamente.")
+                self.send_package(package)
+                t1 = time.time()
+    
         if self.this_package == self.n_packages:
+            self.com.rx.clearBuffer()
             print("TODOS OS PACOTES ENVIADOS")
             sys.exit()
 

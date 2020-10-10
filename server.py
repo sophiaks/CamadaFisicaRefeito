@@ -3,7 +3,7 @@ import logging
 from config import *
 import sys
 
-logging.basicConfig(filename='server.log', filemode='a', format='SERVER - %(asctime)s - %(message)s', level=logging.INFO)
+logging.basicConfig(filename='server.log', filemode='w', format='SERVER - %(asctime)s - %(message)s', level=logging.INFO)
 
 class Server():	
     def __init__(self):	
@@ -15,12 +15,15 @@ class Server():
         self.n_packages = 0
         self.tamanho = None
         self.n_this_package = 1
+        self.last_package_ok = None
 
         self.id_client = b'\x01'
         self.id_server = b'\x02'
         self.eop = b'\xFF\xAA\xFF\xAA'
         self.msg = None
         self.package_order_ok = True
+
+        self.crc = crc
 
 
     def receive_handshake(self):
@@ -48,7 +51,7 @@ class Server():
         print(package)
         self.tamanho = package[5]
         self.n_packages = package[3]
-        logging.info("RECEBIMENTO | TIPO: T2 (HANDSHAKE) | TAMANHO: 14")
+        logging.info("RECEBIMENTO | TIPO: T1 (CONVITE HANDSHAKE) | TAMANHO: 14")
         print(package[0])
         if package[0] == 1:
             print("Cliente convidando para a transmissao")	
@@ -81,10 +84,20 @@ class Server():
         '''
         Envia a confirmação do pacote
         '''
-        logging.info("ENVIO | TIPO: T4| TAMANHO TOTAL: 14")
+        logging.info("ENVIO | TIPO: T4 (CONF) | TAMANHO TOTAL: 14")
         print(f"Enviando confirmacao do pacote {self.n_this_package}")
         conf_head = b'\x04' + self.id_client + self.id_server + self.n_packages + b'\x00' +  b'\x00' + b'\x00' + bytes([self.n_this_package]) + crc
         conf = conf_head + eop
+        self.com.sendData(conf)
+
+    def send_package_error(self, error_package):
+        '''
+        Envia uma mensagem de erro
+        '''
+        logging.info("ENVIO | TIPO: T6 (ERRO)| TAMANHO TOTAL: 14")
+        print(f"Enviando mensagem para reenvio do pacote {error_package}")
+        head_wrong_eop = b'\x06' + self.id_client + self.id_server + bytes([self.n_packages]) + b'\x00' + b'\x00' + error_package + self.last_package_ok + crc
+        conf = head_wrong_eop + eop
         self.com.sendData(conf)
 
 
@@ -113,15 +126,21 @@ class Server():
 
     def check_eop(self, head, eop):
         if eop == self.eop:
-            print("eop ok")
+            print(f"eop do pacote {self.n_this_package} ok")
+            self.send_package_conf()
+            self.last_package_ok = head[5]
+
+        else:
+            print(f"eop do pacote {self.n_this_package} com erro, reenviar o pacote")
+            self.send_package_error(self.n_this_package)
         pass
 
 
     def receive_package(self):
         time_elapsed_data = time.time()
         counter_timer_data = 0
-        logging.info("RECEBIMENTO | TIPO: T5 | ")
         head = self.com.rx.getNData_T(10, time_elapsed_data, counter_timer_data)
+        logging.info(f"RECEBIMENTO | TIPO: T3 (DADOS) | TAMANHO: {head[5]} | PACOTE: {head[4]}/{head[3]} | CRC: {self.crc}")
         self.check_order(head)
         self.n_this_package = head[4]
         print(f"Recebendo pacote {self.n_this_package}")
@@ -129,21 +148,20 @@ class Server():
         if head == "DeuRuim":
             logging.warning("ENVIO | TIPO: T5 (TIMEOUT 5s)")
             print("Timeout de 5s: tentando enviar mensagem novamente")
-            #TO_DO
-            head_timeout = "opa"
+            
         elif head == "ENCERRADO":
             logging.warning("ENVIO | TIPO: T5 (TIMEOUT 20s) | ENCERRANDO COMs")
             print("Timeout atingido: encerrando comunicacoes")
+            head_timeout = b'\x05' + self.id_client + self.id_server + bytes([self.n_this_package]) + b'\x00' + b'\x00' + b'\x00' + self.last_package_ok + crc
             self.com.disable()
             sys.exit()
         else:
             payload, _nPayload = self.com.getData(head[5])
             self.add_to_totalP(payload)
-            self.send_package_conf()
-            eop, _nEop = self.com.getData(4)
-            if eop == self.eop:
-                print("eop recebido com sucesso")
 
+            eop, _nEop = self.com.getData(4)
+            self.check_eop(head, eop)
+            
 
     def runServer(self):
         while not self.readyServer:
@@ -152,7 +170,7 @@ class Server():
             self.send_handshake_conf()
             print("Confirmacao enviada")
 
-        while self.n_this_package < int.from_bytes(self.n_packages, byteorder='big'):
+        while self.n_this_package <= int.from_bytes(self.n_packages, byteorder='big'):
             print(self.n_this_package, self.n_packages)
             self.receive_package()
         sys.exit()

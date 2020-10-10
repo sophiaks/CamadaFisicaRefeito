@@ -78,9 +78,9 @@ class RX(object):
         while(self.getBufferLen() < size):
             timeElapsed = time.time() - time1
             counterTimer += 1
-            if timeElapsed > 5:
+            if timeElapsed > 2:
                 print(timeElapsed)
-                print("Timeout de 5")
+                print("Timeout de 2")
                 time1 = time.time()
                 print(time1)
                 if counterTimer > 4:
