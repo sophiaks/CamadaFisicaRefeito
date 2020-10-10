@@ -74,14 +74,20 @@ class RX(object):
             time.sleep(0.05)
         return(self.getBuffer(size))
 
-    def getNData_Timed(self, size, time1, counterTimer):
+    def getNData_T(self, size, time1, counterTimer):
         while(self.getBufferLen() < size):
             timeElapsed = time.time() - time1
+            counterTimer += 1
             if timeElapsed > 5:
-                counterTimer += 1
-                return("DeuRuim")
-            time.sleep(0.05)
-            return(self.getBuffer(size))
+                print(timeElapsed)
+                print("Timeout de 5")
+                time1 = time.time()
+                print(time1)
+                if counterTimer > 4:
+                    print("Timeout de 20")
+                    return("ENCERRADO")
+            time.sleep(0.01)
+        return(self.getBuffer(size))
 
     def clearBuffer(self):
         self.buffer = b""
