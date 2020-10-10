@@ -96,13 +96,6 @@ class Client():
         Cria o head do pacote
         '''
         head = msg_type + self.id_client + self.id_server + bytes([self.n_packages]) + n.to_bytes(1, byteorder='big') + len(self.payloads[n-1]).to_bytes(1, byteorder='big') + b'\x00' + self.last_package_ok + crc
-        print(len(head))
-        print(n.to_bytes(1, byteorder='big'))
-        print(len(self.payloads[n-1]).to_bytes(1, byteorder='big'))
-        print(len(self.payloads[n-1]))
-        print(bytes([self.n_packages]))
-
-        print(head)
         return head
 
     def create_package(self, head, this_package):
@@ -134,6 +127,7 @@ class Client():
             self.send_package(package)
         if confirmation[7] == self.n_packages:
             print("\nTodos os pacotes foram enviados")
+            self.com.disable
             sys.exit()
 
     def run_client(self):

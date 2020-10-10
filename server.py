@@ -48,11 +48,9 @@ class Server():
         print("Servidor pronto para receber mensagem")
         
         package, _nPackage = self.com.getData(14)
-        print(package)
         self.tamanho = package[5]
         self.n_packages = package[3]
         logging.info("RECEBIMENTO | TIPO: T1 (CONVITE HANDSHAKE) | TAMANHO: 14")
-        print(package[0])
         if package[0] == 1:
             print("Cliente convidando para a transmissao")	
             self.readyServer = True
@@ -75,8 +73,6 @@ class Server():
         '''
         logging.info("ENVIO | TIPO: T2 (CONF HANDSHAKE) | TAMANHO TOTAL: 14")
         handshake = self.create_handshake_conf()
-        print("HandshakeConf")
-        print(handshake)
         self.com.sendData(handshake)
 
 
@@ -109,9 +105,9 @@ class Server():
             self.msg = payload
         else: 
             self.msg += payload
-        print(f"Total do payload: {len(self.msg)}")
+        print(f"Total do payload: {len(self.msg)}\n\n")
         if len(self.msg) == self.tamanho:
-            print("Todos os pacotes recebidos!")
+            print("\nTodos os pacotes recebidos!\n")
             sys.exit()
 
 
@@ -152,7 +148,7 @@ class Server():
         elif head == "ENCERRADO":
             logging.warning("ENVIO | TIPO: T5 (TIMEOUT 20s) | ENCERRANDO COMs")
             print("Timeout atingido: encerrando comunicacoes")
-            head_timeout = b'\x05' + self.id_client + self.id_server + bytes([self.n_this_package]) + b'\x00' + b'\x00' + b'\x00' + self.last_package_ok + crc
+            # head_timeout = b'\x05' + self.id_client + self.id_server + bytes([self.n_this_package]) + b'\x00' + b'\x00' + b'\x00' + self.last_package_ok + crc
             self.com.disable()
             sys.exit()
         else:
@@ -161,6 +157,8 @@ class Server():
 
             eop, _nEop = self.com.getData(4)
             self.check_eop(head, eop)
+            if self.n_this_package == self.n_packages:
+                print("Todos os pacotes recebidos, encerrando.")
             
 
     def runServer(self):
