@@ -18,7 +18,6 @@ class Client():
 
         self.payloads = self.create_payloads(filename)
         self.n_packages = len(self.payloads)
-        print(self.payloads)
 
         self.file_id = b'\x01'
         self.id_client = b'\x01'
@@ -29,6 +28,8 @@ class Client():
         self.this_package = 1
         self.last_package_ok = b'\x00'
         self.n_error = b'\x00'
+
+        self.error_timeout = 0
 
         self.crc = crc
 
@@ -65,6 +66,8 @@ class Client():
         msg_type = b'\x01'
         n_packages =  bytes([self.n_packages])
         handshake = msg_type + self.id_client + self.id_server + n_packages + b'\x00' +  b'\x01' + b'\x00' + b'\x00' + crc 
+        # hanshake para o teste de ordem
+        # handshake = msg_type + self.id_client + self.id_server + b'\x02' + b'\x00' +  b'\x01' + b'\x00' + b'\x00' + crc 
         handshake = handshake + eop
         return handshake
 
@@ -73,12 +76,25 @@ class Client():
         Recebe a confirmação do handshake
         '''
         logging.info(f"RECEBIMENTO | TIPO: T2 | TAMANHO: 14")
-        handshakeConf = self.com.getData(14)
-        print("Peguei os bytes da conf")
-        if handshakeConf[0] == 2:
-            self.ready = True
-        else:
-            self.counter_timer += 1
+        t1 = time.time()
+        respostaH = False
+        while self.com.rx.getIsEmpty():
+            timeElapsed = time.time() - t1
+            respostaH = True
+            if timeElapsed > 5:
+                respostaH = False
+                print("Timeout. Tentando novamente.")
+                break
+        if respostaH:
+            handshakeConf, nHandshakeConf = self.com.getData(14)
+            print("Confirmacao do handshake recebida")
+            if handshakeConf[0] == 2:
+                self.ready = True
+                # time.sleep(1)
+            else:
+                self.counter_timer += 1
+        else: 
+            self.ready = False
 
     def send_handshake(self):
         '''
@@ -89,13 +105,14 @@ class Client():
         logging.info("ENVIO | TIPO: T1 | TAMANHO: 14")
         print("Handshake enviado")
         self.get_handshake_conf()
-        print("Confirmacao do handshake recebida")
+        
     
     def create_head(self, msg_type, n):
         '''
         Cria o head do pacote
         '''
-        head = msg_type + self.id_client + self.id_server + bytes([self.n_packages]) + n.to_bytes(1, byteorder='big') + len(self.payloads[n-1]).to_bytes(1, byteorder='big') + b'\x00' + self.last_package_ok + crc
+        # self.crc = self.create_crc(n)
+        head = msg_type + self.id_client + self.id_server + bytes([self.n_packages]) + n.to_bytes(1, byteorder='big') + len(self.payloads[n-1]).to_bytes(1, byteorder='big') + b'\x00' + self.last_package_ok + self.crc
         return head
 
     def create_package(self, head, this_package):
@@ -117,34 +134,58 @@ class Client():
         Pega a confirmação do pacote
         '''
         confirmation, _nConf = self.com.getData(14)
-        logging.info(f"RECEBIMENTO | T4 (CONF) | TAMANHO: {len(self.payloads[self.this_package- 1])} | PACOTE: {self.this_package} | TOTAL PACOTES: {len(self.payloads)} | CRC: {self.crc}")
         if confirmation[0] == 4:
+            logging.info(f"RECEBIMENTO | T4 (CONF) | TAMANHO: {len(self.payloads[self.this_package- 1])} | PACOTE: {self.this_package} | TOTAL PACOTES: {len(self.payloads)} | CRC: {self.crc}")
             print(f"MENSAGEM T4 RECEBIDA - PACOTE {confirmation[7]}")
         elif confirmation[0] == 6:
-            print("Erro no pacote {0}".format(confirmation[6]))
-            head = self.create_head(b'\x03', confirmation[6])
-            package = self.create_package(head, confirmation[6])
-            self.send_package(package)
+            print("ERRO NO PACOTE {0}".format(confirmation[6]))
+            logging.info(f"RECEBIMENTO | T6 (ERRO) | TAMANHO: 14")
+            self.this_package -= 1
+            
         if confirmation[7] == self.n_packages:
+            self.com.rx.clearBuffer()
             print("\nTodos os pacotes foram enviados")
-            self.com.disable
+            self.com.disable()
             sys.exit()
+
+    def cria_pacotes_ordem(self):
+        '''
+        Cria pacotes na ordem errada
+        '''
+        head1 = b'\x03' + self.id_client + self.id_server + b'\x02' + b'\x01' + b'\x00' + b'\x00' + b'\x00' + crc
+        head2 = b'\x03' + self.id_client + self.id_server + b'\x02' + b'\x03' + b'\x00' + b'\x00' + b'\x00' + crc
+        pack1 = head1 + eop
+        pack2 = head2 + eop
+        list = [pack1, pack2]
+        return list
+
+    # def cria_pacotes_eop(self):
+    #     '''
+    #     Cria pacotes com tamanhos errados
+    #     '''
+    #     head1 = b'\x03' + self.id_client + self.id_server + b'\x02' + b'\x01' + b'\x06' + b'\x00' + b'\x00' + crc
+    #     head2 = b'\x03' + self.id_client + self.id_server + b'\x02' + b'\x02' + b'\x06' + b'\x00' + b'\x00' + crc
+    #     pack1 = head1 + eop
+    #     pack2 = head2 + eop
+    #     list = [pack1, pack2]
+    #     return list
 
     def run_client(self):
         while not self.ready:
-            timer1 = time.time()
             self.send_handshake()
-            self.ready = True
         t1 = time.time()
 
-        while self.this_package <= self.n_packages:
+        while self.this_package <= self.n_packages and self.ready:
+            print("ok")
             head = self.create_head(b'\x03', self.this_package)
-            print(len(head))
             package = self.create_package(head, self.this_package)
 
             print(f"____Pacote {self.this_package}____")
 
             self.send_package(package)
+
+            # chamando função para pacotes de teste
+            # self.send_package(self.cria_pacotes_ordem()[self.this_package-1])
             print(f"Pacote {self.this_package} enviado")
             resposta = True
 
@@ -160,9 +201,22 @@ class Client():
                 self.this_package += 1
 
             else:
-                print(f"Nenhuma resposta recebida do pacote {self.this_package}")
-                print(f"Enviando pacote {self.this_package} novamente.")
-                self.send_package(package)
+                if self.error_timeout < 5:
+                    print(f"Nenhuma resposta recebida do pacote {self.this_package}")
+                    print(f"Enviando pacote {self.this_package} novamente.")
+                    self.error_timeout += 1
+                    
+                    self.send_package(package)
+                    # Pacotes de teste
+                    # self.send_package(self.cria_pacotes_ordem()[self.this_package-1])
+
+                else:
+                    print("Timeout: tentativa de reenviar 4 pacotes falharam.")
+                    logging.info("ENVIO | TIPO: T5 (TIMEOUT 20s) | ENCERRANDO COMs")
+                    self.com.disable()
+                    sys.exit()
+                
+                
                 t1 = time.time()
     
         if self.this_package == self.n_packages:

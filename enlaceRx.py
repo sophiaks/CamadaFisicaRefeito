@@ -77,12 +77,11 @@ class RX(object):
     def getNData_T(self, size, time1, counterTimer):
         while(self.getBufferLen() < size):
             timeElapsed = time.time() - time1
-            counterTimer += 1
-            if timeElapsed > 2:
+            if timeElapsed > 5:
+                counterTimer += 1
                 print(timeElapsed)
-                print("Timeout de 2")
+                print("Timeout de 5")
                 time1 = time.time()
-                print(time1)
                 if counterTimer > 4:
                     print("Timeout de 20")
                     return("ENCERRADO")
