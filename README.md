@@ -3,7 +3,7 @@
 
 ## Conteúdos
 * [Descrição](#descricao)
-* [Tecnologias e Bibliotecas](#technologias-e-bibliotecas)
+* [Tecnologias e Bibliotecas](#tecnologias)
 
 ## Descrição
 Projeto que implementa um protocolo UART para comunicação serial.
