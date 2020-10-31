@@ -1,5 +1,5 @@
 # Protocolo-UART
-![](https://img.shields.io/badge/-Python-informational?style=flat&logo=python&logoColor=white&color=F7D146)
+![](https://img.shields.io/badge/-Python-informational?style=flat&logo=python&logoColor=white&color=blue)
 
 ## Conteúdos
 * [Descrição](#descrição)
